@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repo Manager</title>
+<script>
+  // Apply the saved theme before first paint to avoid a flash.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('rm-theme'); } catch (e) {}
+    if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #090d12;
+    --surface: #111922;
+    --surface-2: #17212c;
+    --line: #223040;
+    --grid: rgba(120, 160, 200, .06);
+    --ink: #e6edf3;
+    --ink-2: #8b9bab;
+    --ink-3: #5d6d7d;
+    --accent: #5eead4;
+    --accent-ink: #032925;
+    --public: #34d399;
+    --public-bg: rgba(52, 211, 153, .13);
+    --private: #a78bfa;
+    --private-bg: rgba(167, 139, 250, .15);
+    --danger: #f87171;
+    --danger-bg: rgba(248, 113, 113, .13);
+    --glow: rgba(94, 234, 212, .10);
+    --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --display: "Space Grotesk", "Inter", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f6f9;
+    --surface: #ffffff;
+    --surface-2: #f6f8fb;
+    --line: #dbe3ea;
+    --grid: rgba(20, 60, 100, .05);
+    --ink: #0e1620;
+    --ink-2: #536170;
+    --ink-3: #8593a1;
+    --accent: #0d9488;
+    --accent-ink: #ffffff;
+    --public: #059669;
+    --public-bg: rgba(5, 150, 105, .11);
+    --private: #6d4fd8;
+    --private-bg: rgba(109, 79, 216, .11);
+    --danger: #dc2626;
+    --danger-bg: rgba(220, 38, 38, .09);
+    --glow: rgba(13, 148, 136, .10);
+    --shadow: 0 10px 30px rgba(20, 40, 70, .15);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 14.5px/1.5 var(--sans);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* technical backdrop: faint grid + soft glow */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(900px 420px at 50% -80px, var(--glow), transparent 70%),
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 44px 44px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 44px 44px;
+    -webkit-mask-image: linear-gradient(#000 30%, transparent 95%);
+            mask-image: linear-gradient(#000 30%, transparent 95%);
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  svg { display: block; flex: none; }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    padding: 8px 14px; border-radius: 8px; font-weight: 500; font-size: 14px; text-decoration: none;
+    transition: border-color .12s, background-color .12s, transform .12s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--ink-3); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600; }
+  .btn.lg { padding: 12px 20px; font-size: 15px; border-radius: 10px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.icon { padding: 8px; }
+
+  /* ---------- Login ---------- */
+  .login { min-height: 100vh; display: grid; place-items: center; padding: 32px 20px; }
+  .login-grid { max-width: 1040px; width: 100%; display: grid; grid-template-columns: 1.05fr .95fr; gap: 56px; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font: 500 12px var(--mono); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 9%, transparent); padding: 4px 10px; border-radius: 999px; margin-bottom: 20px; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .login h1 { font: 700 clamp(32px, 5vw, 50px)/1.05 var(--display); letter-spacing: -0.03em; margin: 0 0 16px; }
+  .login h1 em { font-style: normal; color: var(--accent); }
+  .login p.lead { color: var(--ink-2); font-size: 16.5px; margin: 0 0 28px; max-width: 46ch; }
+  .points { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 10px; color: var(--ink-2); font-size: 13.5px; }
+  .points li { display: flex; gap: 10px; align-items: flex-start; }
+  .points svg { color: var(--accent); margin-top: 2px; }
+  .preview { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .preview .bar { display: flex; align-items: center; gap: 6px; padding: 11px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .preview .bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .preview .bar span { margin-left: 10px; font: 12px var(--mono); color: var(--ink-3); }
+  .preview .pr { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .preview .pr:last-child { border-bottom: 0; }
+  .preview .pr code { font: 500 13px var(--mono); }
+  .preview .pr code b { color: var(--ink-3); font-weight: 400; }
+
+  /* ---------- Navbar ---------- */
+  .nav { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 82%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  .nav-in { max-width: 1120px; margin: 0 auto; height: 60px; padding: 0 20px; display: flex; align-items: center; gap: 24px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font: 600 17px var(--display); letter-spacing: -0.02em; }
+  .brand b { color: var(--accent); font-weight: 600; }
+  .nav-links { display: flex; gap: 4px; }
+  .nav-links a { text-decoration: none; color: var(--ink-2); padding: 6px 12px; border-radius: 7px; font-size: 14px; font-weight: 500; }
+  .nav-links a:hover { color: var(--ink); background: var(--surface); }
+  .nav-links a.active { color: var(--ink); background: var(--surface-2); }
+  .spacer { flex: 1; }
+  .profile { position: relative; }
+  .pbtn { display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 10px 4px 4px; }
+  .pbtn:hover { border-color: var(--ink-3); }
+  .pbtn img { width: 30px; height: 30px; border-radius: 50%; display: block; background: var(--surface-2); }
+  .pbtn .pn { font: 500 13px var(--mono); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pbtn svg { color: var(--ink-3); transition: transform .15s; }
+  .pbtn[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .menu { position: absolute; right: 0; top: calc(100% + 10px); width: 280px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 6px; z-index: 40; }
+  .menu .who { display: flex; gap: 12px; align-items: center; padding: 12px; }
+  .menu .who img { width: 42px; height: 42px; border-radius: 50%; }
+  .menu .who strong { display: block; line-height: 1.25; }
+  .menu .who span { font: 12.5px var(--mono); color: var(--ink-2); }
+  .menu .sep { height: 1px; background: var(--line); margin: 6px 0; }
+  .menu .mi { display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 12px; border: 0; background: transparent; border-radius: 7px; text-decoration: none; color: var(--ink); font-size: 14px; text-align: left; }
+  .menu .mi svg { color: var(--ink-2); }
+  .menu .mi:hover { background: var(--surface-2); }
+  .menu .mi.out { color: var(--danger); }
+  .menu .mi.out svg { color: var(--danger); }
+  .menu .mi.out:hover { background: var(--danger-bg); }
+
+  /* ---------- Page ---------- */
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 20px 120px; }
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+  .page-head h1 { font: 700 30px/1.1 var(--display); letter-spacing: -0.03em; margin: 0 0 6px; }
+  .page-head p { margin: 0; color: var(--ink-2); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .stat { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 16px 18px; position: relative; overflow: hidden; transition: border-color .12s, transform .12s; }
+  .stat:hover { border-color: var(--ink-3); transform: translateY(-1px); }
+  .stat[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .stat .lbl { display: flex; align-items: center; gap: 8px; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--ink-2); }
+  .stat .num { font: 600 34px/1.1 var(--mono); letter-spacing: -0.03em; margin-top: 10px; }
+  .stat.pub .lbl svg, .stat.pub .num { color: var(--public); }
+  .stat.priv .lbl svg, .stat.priv .num { color: var(--private); }
+  .dist { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--surface-2); margin: 14px 0 26px; }
+  .dist span { display: block; height: 100%; transition: width .4s ease; }
+  .dist .d-pub { background: var(--public); }
+  .dist .d-priv { background: var(--private); }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .search { position: relative; flex: 1 1 280px; }
+  .search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); }
+  .search input { width: 100%; padding: 10px 44px 10px 38px; border: 1px solid var(--line); background: var(--surface); border-radius: 9px; outline: none; }
+  .search input:focus { border-color: var(--accent); }
+  .search kbd { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 12px var(--mono); color: var(--ink-3); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; }
+  .select { border: 1px solid var(--line); background: var(--surface); border-radius: 9px; padding: 10px 12px; outline: none; }
+  .rc { color: var(--ink-3); font: 12.5px var(--mono); margin-left: auto; }
+
+  /* ---------- Table ---------- */
+  .table { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; overflow: hidden; }
+  .thead, .row { display: grid; grid-template-columns: 24px minmax(0, 1fr) 184px 84px 40px; gap: 14px; align-items: center; padding: 0 18px; }
+  .thead { height: 44px; background: var(--surface-2); border-bottom: 1px solid var(--line); font: 500 11.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); }
+  .row { padding-top: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); transition: background-color .1s; }
+  .row:last-child { border-bottom: 0; }
+  .row:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+  .row.sel { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  input[type=checkbox] { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .name { text-decoration: none; font: 500 14px var(--mono); word-break: break-all; }
+  .name .own { color: var(--ink-3); font-weight: 400; }
+  .name:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .badge { font: 500 11px var(--mono); border: 1px solid var(--line); color: var(--ink-2); padding: 0 7px; border-radius: 999px; margin-left: 8px; vertical-align: 1px; }
+  .desc { color: var(--ink-2); font-size: 13px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upd { font: 12.5px var(--mono); color: var(--ink-2); }
+
+  .seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+  .seg button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 5px 10px; border-radius: 6px; font-size: 13px; color: var(--ink-3); }
+  .seg button[aria-pressed="false"]:hover { color: var(--ink); background: var(--surface-2); }
+  .seg button[aria-pressed="true"] { cursor: default; font-weight: 600; }
+  .seg button[aria-pressed="true"][data-v="public"] { background: var(--public-bg); color: var(--public); }
+  .seg button[aria-pressed="true"][data-v="private"] { background: var(--private-bg); color: var(--private); }
+  .seg.busy { opacity: .45; pointer-events: none; }
+  .del { border: 0; background: transparent; color: var(--ink-3); padding: 8px; border-radius: 8px; display: grid; place-items: center; }
+  .del:hover { color: var(--danger); background: var(--danger-bg); }
+
+  .empty { padding: 56px 20px; text-align: center; color: var(--ink-2); }
+  .empty strong { display: block; color: var(--ink); font: 600 17px var(--display); margin-bottom: 4px; }
+  .skel { height: 66px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 5%, transparent), transparent) 0 0 / 200% 100%; }
+  @media (prefers-reduced-motion: no-preference) { .skel { animation: sh 1.3s linear infinite; } }
+  @keyframes sh { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+  /* ---------- Bulk bar ---------- */
+  .bulk { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 25; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 18px;
+    background: var(--surface-2); border: 1px solid var(--ink-3); border-radius: 14px; box-shadow: var(--shadow); max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: center; }
+  .bulk .n { font: 600 13px var(--mono); margin-right: 10px; white-space: nowrap; }
+  .bulk .btn { padding: 8px 12px; font-size: 13.5px; }
+
+  /* ---------- Dialog ---------- */
+  dialog { border: 1px solid var(--line); border-radius: 14px; padding: 24px; max-width: 480px; width: calc(100% - 32px); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  dialog::backdrop { background: rgba(3, 6, 10, .65); backdrop-filter: blur(2px); }
+  dialog h2 { margin: 0 0 10px; font: 600 19px var(--display); letter-spacing: -0.01em; }
+  #dlg-body { margin: 0 0 16px; color: var(--ink-2); }
+  dialog code { font: 13px var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; word-break: break-all; }
+  dialog input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: 14px var(--mono); margin-bottom: 18px; outline: none; }
+  dialog input[type=text]:focus { border-color: var(--accent); }
+  .names { margin: 12px 0 0; padding: 10px 12px 10px 30px; max-height: 170px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font: 12.5px/1.7 var(--mono); color: var(--ink); }
+  .actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+  /* ---------- Toasts ---------- */
+  #toasts { position: fixed; top: 72px; right: 16px; z-index: 60; display: grid; gap: 8px; width: min(380px, calc(100% - 32px)); }
+  .toast { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 12px 14px; border-radius: 10px; box-shadow: var(--shadow); font-size: 13.5px; }
+  .toast.error { border-left-color: var(--danger); }
+  .toast svg { margin-top: 2px; color: var(--accent); }
+  .toast.error svg { color: var(--danger); }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 900px) {
+    .login-grid { grid-template-columns: 1fr; gap: 36px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 760px) {
+    .nav-links, .pbtn .pn { display: none; }
+    .thead { display: none; }
+    .row { grid-template-columns: 24px minmax(0, 1fr) 40px; row-gap: 10px; }
+    .row .seg-cell { grid-column: 2; grid-row: 2; }
+    .row .upd { grid-column: 2; grid-row: 3; }
+    .row .del { grid-column: 3; grid-row: 1; }
+    .page-head { flex-direction: column; align-items: flex-start; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- ============ Sign-in screen ============ -->
+<div id="login" class="login" hidden>
+  <div class="login-grid">
+    <div>
+      <span class="pill"><i></i> secure OAuth sign-in</span>
+      <h1>Take control of every <em>repository</em> you own.</h1>
+      <p class="lead">Flip repos between public and private, and clean up the ones you no longer need. One at a time or dozens at once.</p>
+      <a class="btn primary lg" href="/auth/login"><span data-icon="github" data-size="20"></span> Continue with GitHub</a>
+      <ul class="points">
+        <li><span data-icon="shield" data-size="16"></span> You sign in on github.com. Your password never reaches this site.</li>
+        <li><span data-icon="check" data-size="16"></span> Bulk actions skip repos that are already in the state you pick.</li>
+        <li><span data-icon="lock" data-size="16"></span> Revoke access any time from your GitHub settings.</li>
+      </ul>
+    </div>
+    <div class="preview" aria-hidden="true">
+      <div class="bar"><i></i><i></i><i></i><span>repositories</span></div>
+      <div class="pr"><code><b>you/</b>portfolio-site</code><div class="seg"><button data-v="public" aria-pressed="true"><span data-icon="globe" data-size="13"></span> Public</button><button data-v="private" aria-pressed="false"><span data-icon="lock" data-size="13"></span> Private</button></div></div>
+      <div class="pr"><code><b>you/</b>api-experiments</code><div class="seg"><button data-v="public" aria-pressed="false"><span data-icon="globe" data-size="13"></span> Public</button><button data-v="private" aria-pressed="true"><span data-icon="lock" data-size="13"></span> Private</button></div></div>
+      <div class="pr"><code><b>you/</b>dotfiles</code><div class="seg"><button data-v="public" aria-pressed="true"><span data-icon="globe" data-size="13"></span> Public</button><button data-v="private" aria-pressed="false"><span data-icon="lock" data-size="13"></span> Private</button></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ App ============ -->
+<div id="app" hidden>
+  <nav class="nav" aria-label="Main">
+    <div class="nav-in">
+      <a class="brand" href="/">
+        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" fill="var(--accent)"/><g fill="none" stroke="var(--accent-ink)" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="7" r="1.6"/><circle cx="8" cy="17" r="1.6"/><circle cx="16" cy="9" r="1.6"/><path d="M8 8.6v6.8M16 10.6c0 3-8 2-8 4.8"/></g></svg>
+        <span>repo<b>manager</b></span>
+      </a>
+      <div class="nav-links">
+        <a href="/" class="active" aria-current="page">Dashboard</a>
+        <a href="#" id="nav-gh" target="_blank" rel="noopener noreferrer">My GitHub</a>
+      </div>
+      <div class="spacer"></div>
+      <div class="profile">
+        <button class="pbtn" id="pbtn" aria-haspopup="menu" aria-expanded="false" aria-controls="pmenu">
+          <img id="avatar" alt="" width="30" height="30">
+          <span class="pn" id="nav-login"></span>
+          <span data-icon="chev" data-size="16"></span>
+        </button>
+        <div class="menu" id="pmenu" role="menu" hidden>
+          <div class="who">
+            <img id="avatar2" alt="" width="42" height="42">
+            <div><strong id="m-name"></strong><span id="m-login"></span></div>
+          </div>
+          <div class="sep"></div>
+          <a class="mi" role="menuitem" id="m-profile" href="#" target="_blank" rel="noopener noreferrer"><span data-icon="user"></span> Your profile</a>
+          <a class="mi" role="menuitem" id="m-repos" href="#" target="_blank" rel="noopener noreferrer"><span data-icon="repo"></span> Your repositories on GitHub</a>
+          <a class="mi" role="menuitem" href="https://github.com/settings/applications" target="_blank" rel="noopener noreferrer"><span data-icon="shield"></span> App access &amp; permissions</a>
+          <button class="mi" role="menuitem" id="m-theme"><span data-icon="moon"></span> <span id="m-theme-l">Switch theme</span></button>
+          <div class="sep"></div>
+          <button class="mi out" role="menuitem" id="logout"><span data-icon="logout"></span> Sign out</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <div class="page-head">
+      <div>
+        <h1>Repositories</h1>
+        <p>Change visibility or delete. Select several to act on them together.</p>
+      </div>
+      <button class="btn" id="refresh"><span data-icon="refresh" data-size="15"></span> Refresh</button>
+    </div>
+
+    <section class="stats" aria-label="Filter by type">
+      <button class="stat" data-f="all" aria-pressed="true"><div class="lbl"><span data-icon="repo" data-size="14"></span> Total</div><div class="num" id="s-all">0</div></button>
+      <button class="stat pub" data-f="public" aria-pressed="false"><div class="lbl"><span data-icon="globe" data-size="14"></span> Public</div><div class="num" id="s-public">0</div></button>
+      <button class="stat priv" data-f="private" aria-pressed="false"><div class="lbl"><span data-icon="lock" data-size="14"></span> Private</div><div class="num" id="s-private">0</div></button>
+      <button class="stat" data-f="fork" aria-pressed="false"><div class="lbl"><span data-icon="fork" data-size="14"></span> Forks</div><div class="num" id="s-fork">0</div></button>
+    </section>
+    <div class="dist" aria-hidden="true"><span class="d-pub" id="d-pub" style="width:0"></span><span class="d-priv" id="d-priv" style="width:0"></span></div>
+
+    <div class="toolbar">
+      <label class="search">
+        <span data-icon="search" data-size="16"></span>
+        <input type="search" id="search" placeholder="Search by name or description" aria-label="Search repositories" autocomplete="off">
+        <kbd>/</kbd>
+      </label>
+      <select class="select" id="sort" aria-label="Sort repositories">
+        <option value="updated">Recently updated</option>
+        <option value="name">Name (A–Z)</option>
+      </select>
+      <span class="rc" id="count" aria-live="polite"></span>
+    </div>
+
+    <div class="table">
+      <div class="thead">
+        <input type="checkbox" id="selall" aria-label="Select all shown">
+        <span id="sellabel">Repository</span>
+        <span>Visibility</span>
+        <span>Updated</span>
+        <span></span>
+      </div>
+      <div id="list"></div>
+    </div>
+  </main>
+
+  <div class="bulk" id="bulk" role="region" aria-label="Bulk actions" hidden>
+    <span class="n" id="bulk-n"></span>
+    <button class="btn" id="b-public"><span data-icon="globe" data-size="15"></span> Make public</button>
+    <button class="btn" id="b-private"><span data-icon="lock" data-size="15"></span> Make private</button>
+    <button class="btn danger" id="b-delete"><span data-icon="trash" data-size="15"></span> Delete</button>
+    <button class="btn icon" id="b-clear" aria-label="Clear selection"><span data-icon="x" data-size="16"></span></button>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <h2 id="dlg-title"></h2>
+  <div id="dlg-body"></div>
+  <input id="dlg-input" type="text" autocomplete="off" spellcheck="false" hidden aria-label="Type to confirm">
+  <div class="actions">
+    <button class="btn" id="dlg-cancel">Cancel</button>
+    <button class="btn" id="dlg-ok"></button>
+  </div>
+</dialog>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let repos = [], filter = 'all', query = '', sortBy = 'updated', shown = [], selected = new Set(), busy = false, me = null;
+
+/* ---------- Icons (static, trusted markup) ---------- */
+const ICONS = {
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  repo: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+  moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  sun: '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+  search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+  chev: '<polyline points="6 9 12 15 18 9"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+  fork: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M6 8.5v1a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-1M12 12.5v4"/>',
+  github: 'M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12',
+};
+function icon(name, size = 16) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('viewBox', '0 0 24 24');
+  s.setAttribute('width', size);
+  s.setAttribute('height', size);
+  s.setAttribute('aria-hidden', 'true');
+  if (name === 'github') {
+    s.setAttribute('fill', 'currentColor');
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', ICONS.github);
+    s.append(p);
+  } else {
+    s.setAttribute('fill', 'none');
+    s.setAttribute('stroke', 'currentColor');
+    s.setAttribute('stroke-width', '2');
+    s.setAttribute('stroke-linecap', 'round');
+    s.setAttribute('stroke-linejoin', 'round');
+    s.innerHTML = ICONS[name] || '';
+  }
+  return s;
+}
+function hydrateIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach((n) => {
+    if (n.firstChild) return;
+    n.style.display = 'inline-flex';
+    n.append(icon(n.dataset.icon, Number(n.dataset.size) || 16));
+  });
+}
+
+/* ---------- Helpers ---------- */
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    credentials: 'same-origin',
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', ...(opts.headers || {}) },
+  });
+  if (res.status === 401) { showLogin(); const err = new Error('Please sign in again.'); err.auth = true; throw err; }
+  const data = res.status === 204 ? null : await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
+  return data;
+}
+
+function showLogin() { $('#app').hidden = true; $('#login').hidden = false; }
+
+function toast(msg, isError = false, ms = 4500) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (isError ? ' error' : '');
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.append(icon(isError ? 'alert' : 'check', 16), span);
+  $('#toasts').append(t);
+  setTimeout(() => t.remove(), ms);
+}
+
+function el(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (k === 'dataset') Object.assign(n.dataset, v);
+    else n.setAttribute(k, v);
+  }
+  for (const c of kids) n.append(c);
+  return n;
+}
+
+function ago(iso) {
+  const d = (Date.now() - new Date(iso).getTime()) / 1000;
+  for (const [s, l] of [[31536000, 'y'], [2592000, 'mo'], [86400, 'd'], [3600, 'h'], [60, 'm']]) {
+    if (d >= s) return `${Math.floor(d / s)}${l} ago`;
+  }
+  return 'just now';
+}
+const repoCount = (n) => `${n} ${n === 1 ? 'repository' : 'repositories'}`;
+
+/* ---------- Theme ---------- */
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('rm-theme', t); } catch (e) {}
+  const btn = $('#m-theme');
+  btn.querySelector('[data-icon]').replaceChildren(icon(t === 'dark' ? 'sun' : 'moon'));
+  $('#m-theme-l').textContent = t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+}
+
+/* ---------- Render ---------- */
+function render() {
+  const q = query.trim().toLowerCase();
+  shown = repos.filter((r) =>
+    (filter === 'all' || (filter === 'fork' ? r.fork : (filter === 'private') === r.private)) &&
+    (!q || r.full_name.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q))
+  );
+  shown.sort(sortBy === 'name'
+    ? (a, b) => a.full_name.localeCompare(b.full_name)
+    : (a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+  // Selections never stay hidden: bulk actions only touch repos you can see.
+  const visible = new Set(shown.map((r) => r.id));
+  selected = new Set([...selected].filter((id) => visible.has(id)));
+
+  const nPriv = repos.filter((r) => r.private).length;
+  const nPub = repos.length - nPriv;
+  $('#s-all').textContent = repos.length;
+  $('#s-public').textContent = nPub;
+  $('#s-private').textContent = nPriv;
+  $('#s-fork').textContent = repos.filter((r) => r.fork).length;
+  $('#d-pub').style.width = repos.length ? (nPub / repos.length) * 100 + '%' : '0';
+  $('#d-priv').style.width = repos.length ? (nPriv / repos.length) * 100 + '%' : '0';
+  $('#count').textContent = `${shown.length} / ${repos.length} shown`;
+  document.querySelectorAll('.stat').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.f === filter)));
+
+  const list = $('#list');
+  list.replaceChildren();
+  if (!shown.length) {
+    list.append(el('div', { class: 'empty' },
+      el('strong', {}, repos.length ? 'No matches' : 'No repositories'),
+      repos.length ? 'Try a different search or filter.' : 'No repositories found that you have admin rights on.'));
+  } else {
+    for (const r of shown) list.append(row(r));
+  }
+  syncSelection();
+}
+
+function syncSelection() {
+  const n = selected.size;
+  const all = $('#selall');
+  all.checked = shown.length > 0 && n === shown.length;
+  all.indeterminate = n > 0 && n < shown.length;
+  all.disabled = !shown.length || busy;
+  $('#sellabel').textContent = n ? `${n} selected` : 'Repository';
+  $('#bulk').hidden = n === 0 && !busy;
+  if (!busy) $('#bulk-n').textContent = `${n} selected`;
+}
+
+function row(r) {
+  const cb = el('input', { type: 'checkbox', 'aria-label': `Select ${r.full_name}` });
+  cb.checked = selected.has(r.id);
+
+  const seg = el('div', { class: 'seg', role: 'group', 'aria-label': `Visibility of ${r.full_name}` },
+    el('button', { dataset: { v: 'public' }, 'aria-pressed': String(!r.private), onclick: () => r.private && changeVisibility(r, false, seg) }, icon('globe', 13), 'Public'),
+    el('button', { dataset: { v: 'private' }, 'aria-pressed': String(r.private), onclick: () => !r.private && changeVisibility(r, true, seg) }, icon('lock', 13), 'Private')
+  );
+
+  const name = el('a', { class: 'name', href: r.html_url, target: '_blank', rel: 'noopener noreferrer' },
+    el('span', { class: 'own' }, r.owner + '/'), r.name);
+  const title = el('div', {}, name);
+  if (r.fork) title.append(el('span', { class: 'badge' }, 'fork'));
+  if (r.archived) title.append(el('span', { class: 'badge' }, 'archived'));
+
+  const del = el('button', { class: 'del', 'aria-label': `Delete ${r.full_name}`, title: 'Delete', onclick: () => confirmDelete(r) }, icon('trash', 16));
+
+  const rowEl = el('div', { class: 'row' + (cb.checked ? ' sel' : '') },
+    cb,
+    el('div', { style: 'min-width:0' }, title, r.description ? el('div', { class: 'desc' }, r.description) : ''),
+    el('div', { class: 'seg-cell' }, seg),
+    el('span', { class: 'upd', title: new Date(r.updated_at).toLocaleString() }, ago(r.updated_at)),
+    del
+  );
+  cb.addEventListener('change', () => {
+    cb.checked ? selected.add(r.id) : selected.delete(r.id);
+    rowEl.classList.toggle('sel', cb.checked);
+    syncSelection(); // no full re-render, so keyboard focus stays put
+  });
+  return rowEl;
+}
+
+function showSkeleton() {
+  $('#list').replaceChildren(...Array.from({ length: 6 }, () => el('div', { class: 'skel' })));
+}
+
+/* ---------- Dialog ---------- */
+function ask({ title, body, okLabel, danger, typeToConfirm }) {
+  return new Promise((resolve) => {
+    const dlg = $('#dlg'), input = $('#dlg-input'), ok = $('#dlg-ok');
+    $('#dlg-title').textContent = title;
+    $('#dlg-body').replaceChildren(...body);
+    ok.textContent = okLabel;
+    ok.className = 'btn ' + (danger ? 'danger' : 'primary');
+    input.hidden = !typeToConfirm;
+    input.value = '';
+    ok.disabled = !!typeToConfirm;
+    input.oninput = () => (ok.disabled = input.value !== typeToConfirm);
+    const done = (v) => { dlg.close(); resolve(v); };
+    ok.onclick = () => done(true);
+    $('#dlg-cancel').onclick = () => done(false);
+    dlg.oncancel = (e) => { e.preventDefault(); done(false); };
+    dlg.showModal();
+    (typeToConfirm ? input : ok).focus();
+  });
+}
+
+/* ---------- Single-repo actions ---------- */
+async function changeVisibility(r, makePrivate, seg) {
+  if (!makePrivate) {
+    const yes = await ask({
+      title: 'Make this repository public?',
+      body: ['Anyone on the internet will be able to see all code and history in ', el('code', {}, r.full_name), '.'],
+      okLabel: 'Make public',
+    });
+    if (!yes) return;
+  }
+  seg.classList.add('busy');
+  try {
+    const out = await api(`/api/repos/${r.owner}/${r.name}/visibility`, { method: 'PATCH', body: JSON.stringify({ private: makePrivate }) });
+    r.private = out.private;
+    toast(`${r.full_name} is now ${r.private ? 'private' : 'public'}.`);
+  } catch (e) {
+    toast(e.message, true, 8000);
+  }
+  render();
+}
+
+async function confirmDelete(r) {
+  const yes = await ask({
+    title: 'Delete this repository?',
+    body: ['This permanently deletes ', el('code', {}, r.full_name), ', including its issues, pull requests and wikis. Type the full name to confirm.'],
+    okLabel: 'Delete repository',
+    danger: true,
+    typeToConfirm: r.full_name,
+  });
+  if (!yes) return;
+  try {
+    await api(`/api/repos/${r.owner}/${r.name}`, { method: 'DELETE', body: JSON.stringify({ confirm: r.full_name }) });
+    repos = repos.filter((x) => x.id !== r.id);
+    selected.delete(r.id);
+    toast(`Deleted ${r.full_name}.`);
+    render();
+  } catch (e) {
+    toast(e.message, true, 8000);
+  }
+}
+
+/* ---------- Bulk actions ---------- */
+const selectedRepos = () => repos.filter((r) => selected.has(r.id));
+const nameList = (items) => el('ul', { class: 'names' }, ...items.map((r) => el('li', {}, r.full_name)));
+
+// One request per repo, sequentially (gentle on GitHub rate limits), with live progress.
+async function runBulk(items, verb, fn) {
+  busy = true;
+  document.querySelectorAll('#bulk button, #selall').forEach((b) => (b.disabled = true));
+  $('#bulk').hidden = false;
+  const done = [], failed = [];
+  for (const r of items) {
+    $('#bulk-n').textContent = `${verb} ${done.length + failed.length + 1} of ${items.length}…`;
+    try { await fn(r); done.push(r); }
+    catch (e) { failed.push({ r, msg: e.message }); if (e.auth) break; }
+  }
+  busy = false;
+  document.querySelectorAll('#bulk button').forEach((b) => (b.disabled = false));
+  return { done, failed };
+}
+
+function report(verbPast, done, failed, skippedNote = '') {
+  if (!failed.length) return toast(`${verbPast} ${repoCount(done.length)}.${skippedNote}`);
+  const f = failed[0];
+  toast(`${done.length} done, ${failed.length} failed.${skippedNote} ${f.r.full_name}: ${f.msg}`, true, 10000);
+}
+
+async function bulkVisibility(makePrivate) {
+  const picked = selectedRepos();
+  // Repos already in the target state are silently skipped, never an error.
+  const items = picked.filter((r) => r.private !== makePrivate);
+  const skipped = picked.length - items.length;
+  const state = makePrivate ? 'private' : 'public';
+  const skippedNote = skipped ? ` Skipped ${skipped} already ${state}.` : '';
+
+  if (!items.length) return toast(`Nothing to change. All selected repositories are already ${state}.`);
+
+  if (!makePrivate) {
+    const body = ['Anyone on the internet will be able to see all code and history in:', nameList(items)];
+    if (skipped) body.push(el('div', { style: 'margin-top:10px' }, `${repoCount(skipped)} already public will be skipped.`));
+    const yes = await ask({ title: `Make ${repoCount(items.length)} public?`, body, okLabel: `Make ${items.length} public` });
+    if (!yes) return;
+  }
+  const { done, failed } = await runBulk(items, 'Updating', async (r) => {
+    const out = await api(`/api/repos/${r.owner}/${r.name}/visibility`, { method: 'PATCH', body: JSON.stringify({ private: makePrivate }) });
+    r.private = out.private;
+  });
+  report(makePrivate ? 'Made private:' : 'Made public:', done, failed, skippedNote);
+  render();
+}
+
+async function bulkDelete() {
+  const items = selectedRepos();
+  if (!items.length) return;
+  const phrase = `delete ${repoCount(items.length)}`;
+  const yes = await ask({
+    title: `Delete ${repoCount(items.length)}?`,
+    body: ['This permanently deletes the repositories below, including their issues, pull requests and wikis. Type ', el('code', {}, phrase), ' to confirm.', nameList(items)],
+    okLabel: 'Delete permanently',
+    danger: true,
+    typeToConfirm: phrase,
+  });
+  if (!yes) return;
+  const { done, failed } = await runBulk(items, 'Deleting', (r) =>
+    api(`/api/repos/${r.owner}/${r.name}`, { method: 'DELETE', body: JSON.stringify({ confirm: r.full_name }) })
+  );
+  const gone = new Set(done.map((r) => r.id));
+  repos = repos.filter((r) => !gone.has(r.id));
+  gone.forEach((id) => selected.delete(id));
+  report('Deleted:', done, failed);
+  render();
+}
+
+/* ---------- Wiring ---------- */
+$('#search').addEventListener('input', (e) => { query = e.target.value; render(); });
+$('#sort').addEventListener('change', (e) => { sortBy = e.target.value; render(); });
+document.querySelectorAll('.stat').forEach((b) => b.addEventListener('click', () => { filter = b.dataset.f; render(); }));
+$('#selall').addEventListener('change', (e) => {
+  selected = e.target.checked ? new Set(shown.map((r) => r.id)) : new Set();
+  render();
+});
+$('#b-public').addEventListener('click', () => bulkVisibility(false));
+$('#b-private').addEventListener('click', () => bulkVisibility(true));
+$('#b-delete').addEventListener('click', bulkDelete);
+$('#b-clear').addEventListener('click', () => { selected = new Set(); render(); });
+$('#refresh').addEventListener('click', loadRepos);
+
+// Profile dropdown
+const pbtn = $('#pbtn'), pmenu = $('#pmenu');
+function setMenu(open) {
+  pmenu.hidden = !open;
+  pbtn.setAttribute('aria-expanded', String(open));
+}
+pbtn.addEventListener('click', (e) => { e.stopPropagation(); setMenu(pmenu.hidden); });
+document.addEventListener('click', (e) => { if (!pmenu.contains(e.target)) setMenu(false); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !pmenu.hidden) { setMenu(false); pbtn.focus(); }
+  // "/" jumps to search, like GitHub
+  if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !$('#dlg').open) {
+    e.preventDefault(); $('#search').focus();
+  }
+});
+$('#m-theme').addEventListener('click', () => {
+  applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+$('#logout').addEventListener('click', async () => {
+  try { await api('/auth/logout', { method: 'POST' }); } catch (e) {}
+  setMenu(false);
+  repos = []; selected = new Set();
+  showLogin();
+});
+
+async function loadRepos() {
+  showSkeleton();
+  try {
+    repos = await api('/api/repos');
+    render();
+  } catch (e) {
+    if (!e.auth) { $('#list').replaceChildren(el('div', { class: 'empty' }, el('strong', {}, 'Could not load repositories'), e.message)); }
+  }
+}
+
+(async function init() {
+  hydrateIcons();
+  applyTheme(document.documentElement.getAttribute('data-theme'));
+  try {
+    me = await api('/api/me');
+    $('#avatar').src = me.avatar_url;
+    $('#avatar2').src = me.avatar_url;
+    $('#nav-login').textContent = me.login;
+    $('#m-name').textContent = me.name || me.login;
+    $('#m-login').textContent = '@' + me.login;
+    $('#m-profile').href = me.html_url;
+    $('#m-repos').href = `${me.html_url}?tab=repositories`;
+    $('#nav-gh').href = me.html_url;
+    $('#app').hidden = false;
+    await loadRepos();
+  } catch (e) {
+    if ($('#app').hidden) showLogin();
+  }
+})();
+</script>
+</body>
+</html>
